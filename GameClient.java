@@ -34,7 +34,8 @@ public class GameClient {
     private JTextField registerUsernameField;
     private JPasswordField registerPasswordField;
     private JPasswordField registerConfirmPasswordField;
-    private String authenticatedUsername;
+
+    private User user;
 
     private int currentPanel = -1;
 
@@ -212,6 +213,12 @@ public class GameClient {
                 {10,    "Beeswax",       0, 1, "12.5s"}
         };
 
+        try {
+            data = server.getTopPlayers();
+        } catch (RemoteException e) {
+            System.out.println("Error invoking RMI: getTopPlayers() " + e);
+        }
+
         // Define new table model to make cells non-editable
         DefaultTableModel tableModel = new DefaultTableModel(data, columnNames) {
             @Override
@@ -255,12 +262,12 @@ public class GameClient {
                 if (server != null) {
                     try {
                         System.out.println("Main frame closed - logging out...");
-                        server.logout(authenticatedUsername);
+                        server.logout(user.getUsername());
                         mainFrame.setVisible(false);
                         registerFrame.setVisible(false);
                         loginFrame.setVisible(true);
                     } catch (RemoteException err) {
-                        System.err.println("Failed invoking RMI: ");
+                        System.err.println("Failed invoking RMI: " + e);
                     }
                 }
             }
@@ -303,7 +310,7 @@ public class GameClient {
                             JOptionPane.showMessageDialog(null, "User already logged in", "Error", JOptionPane.ERROR_MESSAGE);
                         else if (status == 4) {
                             currentPanel = 0;
-                            authenticatedUsername = username;
+                            user = server.getUserDetails(username);
                             viewPanel = new MainPanel();
                             viewPanel.repaint();
                             if (leaderboard != null) {
@@ -317,7 +324,7 @@ public class GameClient {
                             mainFrame.setVisible(true);
                         }
                     } catch (RemoteException e) {
-                        System.err.println("Failed invoking RMI: ");
+                        System.err.println("Failed invoking RMI: " + e);
                     }
                 }
             }
@@ -345,7 +352,7 @@ public class GameClient {
                     try {
                         int status = server.register(username, password);
                         if (status == 4) {
-                            authenticatedUsername = username;
+                            user = server.getUserDetails(username);
                             if (currentPanel == -1) {
                                 currentPanel = 0;
                                 viewPanel = new MainPanel();
@@ -366,7 +373,7 @@ public class GameClient {
                         } else if (status == 1)
                             JOptionPane.showMessageDialog(null, "Username taken, please choose another", "Error", JOptionPane.ERROR_MESSAGE);
                     } catch (RemoteException e) {
-                        System.err.println("Failed invoking RMI: register");
+                        System.err.println("Failed invoking RMI: register" + e);
                     }
                 }
             }
@@ -378,12 +385,12 @@ public class GameClient {
         public void actionPerformed(ActionEvent ae) {
             if (server != null) {
                 try {
-                    server.logout(authenticatedUsername);
+                    server.logout(user.getUsername());
                     mainFrame.setVisible(false);
                     registerFrame.setVisible(false);
                     loginFrame.setVisible(true);
                 } catch (RemoteException e) {
-                    System.err.println("Failed invoking RMI: logout");
+                    System.err.println("Failed invoking RMI: logout" + e);
                 }
             }
         }
@@ -414,11 +421,11 @@ public class GameClient {
                 }
                 case "userProfile": {
                     currentPanel = 0;
-                    viewPanel.repaint();
                     if (leaderboard != null) {
                         mainFrame.remove(leaderboard);
                         mainFrame.add(viewPanel);
                     }
+                    viewPanel.repaint();
                     mainFrame.pack();
                     mainFrame.repaint();
                     mainFrame.setVisible(true);
@@ -426,11 +433,11 @@ public class GameClient {
                 }
                 case "game": {
                     currentPanel = 1;
-                    viewPanel.repaint();
                     if (leaderboard != null) {
                         mainFrame.remove(leaderboard);
                         mainFrame.add(viewPanel);
                     }
+                    viewPanel.repaint();
                     mainFrame.pack();
                     mainFrame.repaint();
                     mainFrame.setVisible(true);
@@ -438,9 +445,7 @@ public class GameClient {
                 }
                 case "leaderboard": {
                     currentPanel = 2;
-                    if (leaderboard == null) {
-                        leaderboard = createLeaderboard();
-                    }
+                    leaderboard = createLeaderboard();
                     mainFrame.remove(viewPanel);
                     mainFrame.add(leaderboard);
                     mainFrame.pack();
@@ -468,17 +473,17 @@ public class GameClient {
 
                 g2.setFont(f);
                 g2.setStroke(new BasicStroke(2));
-                g2.drawString(authenticatedUsername, 30, 50);
+                g2.drawString(user.getUsername(), 30, 50);
 
                 f = new Font("Calibri", Font.PLAIN, 20);
                 g2.setFont(f);
-                g2.drawString("Number of wins: " + "6", 30, 90);
-                g2.drawString("Number of games: " + "9", 30, 120);
-                g2.drawString("Average time to win: " + "42.0s", 30, 150);
+                g2.drawString("Number of wins: " + user.getNumWin(), 30, 90);
+                g2.drawString("Number of games: " + user.getTotalGames(), 30, 120);
+                g2.drawString("Average time to win: " + user.getAvgTime() + " s", 30, 150);
 
                 f = new Font("Arial", Font.BOLD, 25);
                 g2.setFont(f);
-                g2.drawString("Rank: #" + "5", 30, 190);
+                g2.drawString("Rank: #" + "TBD", 30, 190);
             } else if (currentPanel == 1) {
                 Font f = new Font("Calibri", Font.BOLD, 30);
                 g2.setFont(f);

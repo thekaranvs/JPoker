@@ -1,63 +1,67 @@
-import java.io.*;
 import java.rmi.*;
 import java.rmi.server.*;
+import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.sql.*;
 
 public class GameServer extends UnicastRemoteObject implements ServerInterface {
 
-    private HashMap<String, String> userInfoMap;
-    private ArrayList<String> onlineUserList;
+    private static final String DB_HOST = "localhost";
+    private static final String DB_USER = "c3358";
+    private static final String DB_PASS = "c3358PASS";
+    private static final String DB_NAME = "JPoker";
+    private Connection conn;
 
-    public GameServer() throws RemoteException {
-        userInfoMap = new HashMap<String, String>();
-        onlineUserList = new ArrayList<String>();
+    private ArrayList<User> userList;
+
+    public GameServer() throws RemoteException, SQLException, InstantiationException, IllegalAccessException, ClassNotFoundException {
+
+        conn = DriverManager.getConnection("jdbc:mysql://" + DB_HOST + "/" + DB_NAME + "?user=" + DB_USER + "&password=" + DB_PASS);
+        System.out.println("Connection to database successful!");
 
         try {
-            File userInfoFile = new File("UserInfo.txt");
-            if (userInfoFile.createNewFile()) {
-                System.out.println("Creating UserInfo.txt...");
-            } else {
-                System.out.println("Found existing UserInfo.txt - reading data (if any)...");
-                BufferedReader reader = new BufferedReader(new FileReader(userInfoFile));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String[] userDetails = line.split(",");
-                    userInfoMap.put(userDetails[0], userDetails[1]);
-                }
-                reader.close();
-            }
+            String createUserInfoTableSQL = "CREATE TABLE IF NOT EXISTS UserInfo (" +
+                    "    username varchar(20) NOT NULL," +
+                    "    password varchar(20) NOT NULL," +
+                    "    games_won INT(5)," +
+                    "    games_played INT(5)," +
+                    "    win_time INT(5));";
+            Statement createTableStmt = conn.createStatement();
+            createTableStmt.executeUpdate(createUserInfoTableSQL);
 
-            File onlineUserFile = new File("OnlineUser.txt");
-            if (onlineUserFile.createNewFile()) {
-                System.out.println("Creating OnlineUser.txt...");
+            String createOnlineUserTableSQL = "CREATE TABLE IF NOT EXISTS OnlineUser (" +
+                    "    username varchar(20) NOT NULL," +
+                    "    last_logged_in TIMESTAMP," +
+                    "    is_logged_in TINYINT);";
+            createTableStmt.executeUpdate(createOnlineUserTableSQL);
+        } catch (Exception e) {
+            System.out.println("Error creating tables: " + e);
+        }
+
+        try {
+            PreparedStatement stmt = conn.prepareStatement("UPDATE OnlineUser SET is_logged_in = 0");
+            int rows = stmt.executeUpdate();
+            if (rows > 0) {
+                System.out.println("Login status set to 0 for all existing users!");
+            } else {
+                System.out.println("No registered users!");
             }
-            FileWriter fw = new FileWriter(onlineUserFile);
-            fw.write("");
-            fw.flush();
-            fw.close();
-            System.out.println("Ready to process requests!");
-        } catch (IOException e) {
-            System.out.println("Error while creating/reading files");
-            e.printStackTrace();
+        } catch (SQLException | IllegalArgumentException e) {
+            System.out.println("Error updating OnlineUser: " + e);
         }
     }
 
-    public static void main(String args[]) {
+    public static void main(String[] args) {
         try {
             GameServer server = new GameServer();
             System.setSecurityManager(new SecurityManager());
             Naming.rebind("Server", server);
         } catch (Exception e) {
-            System.out.println("Error registering with RMI");
+            System.out.println("Error registering with RMI - terminating application..." + e);
+            System.exit(1);
         }
     }
 
-    private synchronized void addUserToUserInfoMap(String username, String password) { userInfoMap.put(username, password); }
-
-    private synchronized void addUserToOnlineUserList(String username) { onlineUserList.add(username); }
-
-    private synchronized void removeUserFromOnlineUserList(String username) { onlineUserList.remove(username); }
 
     /**
      * Function to register user and add details to UserInfo.txt
@@ -70,16 +74,38 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
         System.out.println(username + " attempting to register...");
         int status = 0;
 
-        if (userInfoMap.containsKey(username)) {
-            status = 1;
-            System.out.println(username + " taken.");
-        } else {
-            status = 4;
-            addUserToUserInfoMap(username, password);
-            writeToFile("UserInfo.txt", username, password, false);
-            System.out.println(username + " successfully registered!");
-            login(username, password);
+        try {
+            PreparedStatement stmt = conn.prepareStatement("SELECT username FROM UserInfo WHERE username = ?");
+            stmt.setString(1, username);
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                status = 1;
+                System.out.println(username + " already taken.");
+            } else {
+                status = 4;
+                stmt = conn.prepareStatement("INSERT INTO UserInfo (username, password, games_won, games_played, win_time) VALUES (?, ?, ?, ?, ?)");
+                stmt.setString(1, username);
+                stmt.setString(2, password);
+                stmt.setInt(3, 0);
+                stmt.setInt(4, 0);
+                stmt.setInt(5, 0);
+                stmt.execute();
+
+                System.out.println("Added user record to UserInfo table!");
+                System.out.println(username + " successfully registered!");
+
+                stmt = conn.prepareStatement("INSERT INTO OnlineUser (username, last_logged_in, is_logged_in) VALUES (?, ?, ?)");
+                stmt.setString(1, username);
+                stmt.setTimestamp(2, Timestamp.from(Instant.now()));
+                stmt.setInt(3, 1);
+                stmt.execute();
+            }
+
+        } catch (SQLException | IllegalArgumentException e) {
+            System.out.println("Error accessing record in UserInfo: " + e);
         }
+
         return status;
     }
 
@@ -94,21 +120,56 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
         System.out.println(username + " attempting to login...");
         int status = 0;
 
-        if (!userInfoMap.containsKey(username)) {
-            status = 1;
-            System.out.println(username + " not found.");
-        } else if (!password.equals(userInfoMap.get(username))) {
-            status = 2;
-            System.out.println("Password did not match.");
-        } else if (onlineUserList.contains(username)) {
-            status = 3;
-            System.out.println(username + " already logged in and online.");
-        } else {
-            status = 4;
-            addUserToOnlineUserList(username);
-            writeToFile("OnlineUser.txt", username, null, false);
-            System.out.println(username + " successfully logged in!");
+        try {
+            PreparedStatement stmt = conn.prepareStatement("SELECT password FROM UserInfo WHERE username = ?");
+            stmt.setString(1, username);
+            ResultSet rs = stmt.executeQuery();
+
+            if (!rs.next()) {
+                status = 1;
+                System.out.println(username + " not found.");
+            } else {
+                String correctPassword = rs.getString(1);
+
+                // Check if user is already logged in
+                stmt = conn.prepareStatement("SELECT is_logged_in FROM OnlineUser WHERE username = ?");
+                stmt.setString(1, username);
+                rs = stmt.executeQuery();
+
+                boolean isLoggedIn = false;
+                if (rs.next()) {
+                    isLoggedIn = rs.getInt(1) == 1;
+                } else {
+                    System.out.println("ERROR - user did not exist in OnlineUser table!");
+                }
+
+                if (!correctPassword.equals(password)) {
+                    status = 2;
+                    System.out.println("Password did not match.");
+                } else if (isLoggedIn) {
+                    status = 3;
+                    System.out.println(username + " already logged in and online.");
+                } else {
+                    status = 4;
+
+                    // Update OnlineUser table
+                    stmt = conn.prepareStatement("UPDATE OnlineUser SET is_logged_in = ?, last_logged_in = ? WHERE username = ?");
+                    stmt.setInt(1, 1);
+                    stmt.setTimestamp(2, Timestamp.from(Instant.now()));
+                    stmt.setString(3, username);
+                    int rows = stmt.executeUpdate();
+
+                    if (rows > 0) {
+                        System.out.println(username + " successfully logged in!");
+                    } else {
+                        System.out.println("Error while updating OnlineUser table - proceeding anyway");
+                    }
+                }
+            }
+        } catch (SQLException | IllegalArgumentException e) {
+            System.out.println("Error accessing tables: " + e);
         }
+
         return status;
     }
 
@@ -119,42 +180,59 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
      */
     public synchronized void logout(String username) throws RemoteException {
         System.out.println(username + " logging out...");
-        removeUserFromOnlineUserList(username);
-        // Clear online user text file
-        writeToFile("OnlineUser.txt", null, null, true);
 
-        // Rewrite online users to file
-        for (String user : onlineUserList) {
-            writeToFile("OnlineUser.txt", user, null, false);
+        try {
+            PreparedStatement stmt = conn.prepareStatement("UPDATE OnlineUser SET is_logged_in = 0 WHERE username = ?");
+            stmt.setString(1, username);
+            int rows = stmt.executeUpdate();
+
+            if (rows > 0) {
+                System.out.println(username + " successfully logged out!");
+            } else {
+                System.out.println("Error while logging user out");
+            }
+
+        } catch (SQLException | IllegalArgumentException e) {
+            System.out.println("Error accessing record in OnlineUser: " + e);
         }
-        System.out.println(username + " successfully logged out!");
     }
 
-    /**
-     * Outputs username and/or password to specified file
-     * @param filename The name of the file
-     * @param username The username
-     * @param password The password
-     * @param overwrite Boolean whether to overwrite file or append
-     */
-    public synchronized void writeToFile(String filename, String username, String password, boolean overwrite) {
+    public synchronized User getUserDetails(String username) throws RemoteException {
+        User user = null;
+        
         try {
-            BufferedWriter bw = new BufferedWriter(new FileWriter(filename, !overwrite));
-            if (username == null) {
-                bw.write("");
-            } else {
-                String message = username + "," + password;
-                if (password == null) {
-                    message = username;
-                }
-                bw.write(message);
-                bw.newLine();
+            PreparedStatement stmt = conn.prepareStatement("SELECT username, games_won, games_played, win_time FROM UserInfo WHERE userName = ?");
+            stmt.setString(1, username);
+            ResultSet rs = stmt.executeQuery();
+
+            String[] details = new String[4];
+            if (rs.next()) {
+                System.out.println("Retrieved data of " + username);
+                user = new User(rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getDouble(4));
             }
-            bw.flush();
-            bw.close();
-        } catch (IOException e) {
-            System.out.println("Error while writing to file!");
-            e.printStackTrace();
+        } catch (SQLException | IllegalArgumentException e) {
+            System.out.println("Error accessing record in UserInfo: " + e);
         }
+
+        return user;
+    }
+
+    public synchronized Object[][] getTopPlayers() throws RemoteException {
+        Object[][] leaderboardData = new Object[10][5];
+        try {
+            PreparedStatement stmt = conn.prepareStatement("SELECT * FROM UserInfo ORDER BY games_won DESC LIMIT 10");
+            ResultSet rs = stmt.executeQuery();
+
+            int rank = 1;
+            while (rs.next()) {
+                Object[] leaderboardEntry = {rank, rs.getString("username"), rs.getString("games_won"), rs.getString("games_played"), rs.getString("win_time")};
+                leaderboardData[rank-1] = leaderboardEntry;
+                rank++;
+            }
+        } catch (SQLException | IllegalArgumentException e) {
+            System.out.println("Error accessing records in UserInfo: " + e);
+        }
+
+        return leaderboardData;
     }
 }
