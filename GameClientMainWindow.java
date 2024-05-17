@@ -1,38 +1,32 @@
 import java.awt.*;
-
 import javax.swing.BoxLayout;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
-
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.net.URISyntaxException;
 import java.rmi.RemoteException;
-import java.sql.SQLException;
-
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 
 public class GameClientMainWindow extends JFrame implements ActionListener {
-    JButton profile = new JButton("User Profile");
-    JButton play = new JButton("Play Game");
-    JButton leaderboard = new JButton("Leader Board");
-    JButton logout = new JButton("Logout");
-    JButton btnNewgame = new JButton("New Game");
-    JButton btnRestartGame = new JButton("Restart Game");
+    JButton profileButton = new JButton("User Profile");
+    JButton playGameButton = new JButton("Play Game");
+    JButton leaderboardButton = new JButton("Leaderboard");
+    JButton logoutButton = new JButton("Logout");
+    JButton newGameButton = new JButton("New Game");
+    JButton nextGameButton = new JButton("Next Game");
 
     GameClient client;
-    JPanel pnlWelcome = new JPanel();
-    JPanel pnlStartBtn = new JPanel();
-    JPanel pnlLB = new JPanel();
-    JPanel pnlWaiting = new JPanel();
-    GameClientPlayWindow pnlPlaying = new GameClientPlayWindow();
-    JPanel pnlRestart = new JPanel();
+    JPanel profilePanel = new JPanel();
+    JPanel playGameButtonPanel = new JPanel();
+    JPanel leaderboardPanel = new JPanel();
+    JPanel waitingPanel = new JPanel();
+    GameClientPlayWindow playingPanel = new GameClientPlayWindow();
+    JPanel nextGamePanel = new JPanel();
     JPanel mainPanel = new JPanel();
-
-
 
     private int gameStatus = 0; // 0: new game, 1: waiting for game, 2: ongoing game, 3: next game
 
@@ -55,55 +49,55 @@ public class GameClientMainWindow extends JFrame implements ActionListener {
 
     @Override
     public void actionPerformed(ActionEvent arg0) {
-        if (arg0.getSource() == leaderboard) {
+        if (arg0.getSource() == leaderboardButton) {
             remove(mainPanel);
             repaint();
             mainPanel = createLeaderboard();
             add(mainPanel, BorderLayout.CENTER);
             invalidate();
             validate();
-        } else if (arg0.getSource() == profile) {
+        } else if (arg0.getSource() == profileButton) {
             remove(mainPanel);
             repaint();
-            pnlWelcome = new JPanel();
+            profilePanel = new JPanel();
             client.retrieveLatestUserInfo();
             createHomePage(client.user);
-            mainPanel = pnlWelcome;
+            mainPanel = profilePanel;
             add(mainPanel, BorderLayout.CENTER);
             invalidate();
             validate();
-        } else if (arg0.getSource() == play) {
+        } else if (arg0.getSource() == playGameButton) {
             remove(mainPanel);
             repaint();
             switch (gameStatus) {
                 case 0:
-                    mainPanel = pnlStartBtn;
+                    mainPanel = playGameButtonPanel;
                     break;
                 case 1:
-                    mainPanel = pnlWaiting;
+                    mainPanel = waitingPanel;
                     break;
                 case 2:
-                    mainPanel = pnlPlaying;
+                    mainPanel = playingPanel;
                     break;
                 case 3:
-                    mainPanel = pnlRestart;
+                    mainPanel = nextGamePanel;
                     break;
             }
             add(mainPanel, BorderLayout.CENTER);
             invalidate();
             validate();
-        } else if (arg0.getSource() == btnNewgame || arg0.getSource() == btnRestartGame) {
+        } else if (arg0.getSource() == newGameButton || arg0.getSource() == nextGameButton) {
             gameStatus = 1;
-            pnlWaiting = new JPanel();
+            waitingPanel = new JPanel();
             remove(mainPanel);
             repaint();
-            pnlWaiting.add(new JLabel("Waiting for players..."));
-            mainPanel = pnlWaiting;
+            waitingPanel.add(new JLabel("Waiting for players..."));
+            mainPanel = waitingPanel;
             add(mainPanel, BorderLayout.CENTER);
             invalidate();
             validate();
             new waitForJoin().execute();
-        } else if (arg0.getSource() == logout) {
+        } else if (arg0.getSource() == logoutButton) {
             if (client.server != null) {
                 try {
                     client.server.logout(client.user.getUsername());
@@ -124,53 +118,46 @@ public class GameClientMainWindow extends JFrame implements ActionListener {
             System.out.println("Message Sent to join game: " + client.user.getUsername());
             return null;
         }
-
         @Override
         protected void done() {
             super.done();
         }
     }
 
-    /**
-     * Called by onMessage. init4.
-     */
-    public void playinggame() {
+
+    public void showGamePanel() {
         gameStatus = 2;
         remove(mainPanel);
         repaint();
         try {
-            pnlPlaying.startGame(client.jmsclient.playerList,
-                    client.jmsclient.gameMsg, client);
+            playingPanel.startGame(client.jmsclient.playerList, client.jmsclient.gameMsg, client);
         } catch (URISyntaxException e) {
             e.printStackTrace();
         }
 
-        mainPanel = pnlPlaying;
+        mainPanel = playingPanel;
         add(mainPanel, BorderLayout.CENTER);
         revalidate();
         repaint();
     }
 
-    /**
-     * Called by onMessage.
-     */
-    public void gameoverboard() {
+    public void showGameOver() {
         gameStatus = 3;
         remove(mainPanel);
         repaint();
-        pnlRestart = new JPanel();
+        nextGamePanel = new JPanel();
         repaint();
         JLabel j1 = new JLabel("Winner: " + client.jmsclient.gameOverMsg.getWinner() + "\n");
         j1.setFont(new Font("Serif", Font.PLAIN, 25));
         JLabel j2 = new JLabel(client.jmsclient.gameOverMsg.getAnswer() + "\n");
         j2.setFont(new Font("Serif", Font.BOLD, 40));
-        pnlRestart.setLayout(new BoxLayout(pnlRestart, BoxLayout.PAGE_AXIS));
-        pnlRestart.add(j1, BorderLayout.CENTER);
-        pnlRestart.add(j2, BorderLayout.CENTER);
-        btnRestartGame.setPreferredSize(new Dimension(100, 40));
-        btnRestartGame.addActionListener(this);
-        pnlRestart.add(btnRestartGame, BorderLayout.SOUTH);
-        mainPanel = pnlRestart;
+        nextGamePanel.setLayout(new BoxLayout(nextGamePanel, BoxLayout.PAGE_AXIS));
+        nextGamePanel.add(j1, BorderLayout.CENTER);
+        nextGamePanel.add(j2, BorderLayout.CENTER);
+        nextGameButton.setPreferredSize(new Dimension(100, 40));
+        nextGameButton.addActionListener(this);
+        nextGamePanel.add(nextGameButton, BorderLayout.SOUTH);
+        mainPanel = nextGamePanel;
         add(mainPanel, BorderLayout.CENTER);
         invalidate();
         validate();
@@ -184,36 +171,36 @@ public class GameClientMainWindow extends JFrame implements ActionListener {
         // Build main menu (button panel)
         JPanel buttonPanel = new JPanel();
         buttonPanel.setLayout(new GridLayout(1, 4));
-        buttonPanel.add(profile);
-        buttonPanel.add(play);
-        buttonPanel.add(leaderboard);
-        buttonPanel.add(logout);
+        buttonPanel.add(profileButton);
+        buttonPanel.add(playGameButton);
+        buttonPanel.add(leaderboardButton);
+        buttonPanel.add(logoutButton);
 
         // Build home page (user profile)
         createHomePage(player);
 
         // Build leaderboard
-        JPanel leaderboardPanel = createLeaderboard();
-        pnlLB.add(leaderboardPanel);
+        JPanel leaderboardPanel1 = createLeaderboard();
+        leaderboardPanel.add(leaderboardPanel1);
 
         // Play Game Panel
-        pnlStartBtn.add(btnNewgame);
+        playGameButtonPanel.add(newGameButton);
 
         // Set main panel to home page
-        mainPanel = pnlWelcome;
+        mainPanel = profilePanel;
 
         getContentPane().add(BorderLayout.CENTER, mainPanel);
-        leaderboard.addActionListener(this);
-        profile.addActionListener(this);
-        play.addActionListener(this);
-        logout.addActionListener(this);
-        btnNewgame.addActionListener(this);
+        leaderboardButton.addActionListener(this);
+        profileButton.addActionListener(this);
+        playGameButton.addActionListener(this);
+        logoutButton.addActionListener(this);
+        newGameButton.addActionListener(this);
 
         getContentPane().add(BorderLayout.NORTH, buttonPanel);
 
         pack();
         setLocationRelativeTo(null);
-        setSize(800, 600);
+        setSize(600, 450);
         setVisible(true);
         addWindowListener(new MyWindowListener());
     }
@@ -236,8 +223,8 @@ public class GameClientMainWindow extends JFrame implements ActionListener {
             } else {
                 texts[i].setFont(new Font("Serif", Font.PLAIN, 20));
             }
-            pnlWelcome.setLayout(new BoxLayout(pnlWelcome, BoxLayout.Y_AXIS));
-            pnlWelcome.add(texts[i]);
+            profilePanel.setLayout(new BoxLayout(profilePanel, BoxLayout.Y_AXIS));
+            profilePanel.add(texts[i]);
         }
     }
 
@@ -246,7 +233,7 @@ public class GameClientMainWindow extends JFrame implements ActionListener {
         leaderboardPanel.setLayout(new GridLayout(1, 0));
 
         String[] columnNames = {"Rank", "Player", "Games Won", "Games Played", "Average Time"};
-        Object[][] data = {
+        Object[][] data = { // Dummy data
                 {1,     "PlayerZero",   18, 25, "16.9s"},
                 {2,     "Player 4",     15, 17, "12.5s"},
                 {3,     "DudeMan",      13, 22, "12.5s"},
@@ -259,7 +246,7 @@ public class GameClientMainWindow extends JFrame implements ActionListener {
                 {10,    "Beeswax",       0, 1, "12.5s"}
         };
 
-        try {
+        try { // Fetch real data
             data = client.server.getTopPlayers();
         } catch (RemoteException e) {
             System.out.println("Error invoking RMI: getTopPlayers() " + e);

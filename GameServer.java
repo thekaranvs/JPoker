@@ -34,8 +34,7 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
     private Thread gameThread;
     private static int[] gameCardValues;
 
-
-    public GameServer() throws RemoteException, SQLException, InstantiationException, IllegalAccessException, ClassNotFoundException, NamingException {
+    public GameServer() throws RemoteException, SQLException {
         try {
             jms = new JMS();
         } catch (Exception e) {
@@ -90,7 +89,7 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
             Naming.rebind("Server", server);
             server.run();
         } catch (Exception e) {
-            System.out.println("Error registering with JDBC or RMI - terminating application... " + e);
+            System.out.println("Error registering with JDBC or RMI or while running server - terminating application... " + e);
             System.exit(1);
         }
     }
@@ -404,7 +403,7 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
     class HandleClientMsg implements Runnable {
         private User playerInfo;
 
-        public HandleClientMsg(GameMessage clientMsg){
+        public HandleClientMsg(GameMessage clientMsg) {
             this.playerInfo = clientMsg.getGamePlayer();
         }
         public void run() {
@@ -496,7 +495,7 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
         } catch (Exception e) {
             System.out.println("GameServer: Error evaluating submitted answer! Msg: " + e);
             result = e.getMessage();
-            if (result == null) result = "INVALID INPUT!";
+            if (result == null) result = "Invalid input!";
         }
         return result;
     }
@@ -506,7 +505,7 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
     {
         char[] tokens = expression.toCharArray();
 
-        // Storing the card values in expression to cross check with cards shown to user
+        // Storing the card values in expression to cross-check with cards shown to user
         int[] cardValues = new int[4];
         int cardIndex = 0;
 
@@ -577,6 +576,8 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
                 operators.push(tokens[i]);
             }
         }
+
+        if (cardIndex != 4) throw new Exception("All 4 cards must be used!");
 
         // Ensure only values in deck displayed are used
         for (int i = 0; i < cardIndex; i++) {

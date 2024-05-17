@@ -1,9 +1,9 @@
 import java.io.Serializable;
 import java.util.ArrayList;
 
+// Serializable class containing all the fields necessary for all client-server communication
 public class GameMessage implements Serializable {
     private String command;  // specify what the message is used for
-    private String to;
     private String username;
     private String password;
 
@@ -11,12 +11,9 @@ public class GameMessage implements Serializable {
 
     private ArrayList<User> playerList;
     private ArrayList<String> gameCards;
-    private String answer;          // the answer submitted by the user
-    private long timeUsed;          // time used to come up with this answer
-
-    private double result;          // what's the result of the expression submitted by the player
-    private String winner;          // the winner's user_name if it is the case
-    private long endTime;           // the end time for the winner
+    private String answer;
+    private String winner;
+    private long endTime;
 
 
     public GameMessage() {
@@ -79,22 +76,6 @@ public class GameMessage implements Serializable {
         this.answer = answer;
     }
 
-    public long getTimeUsed() {
-        return timeUsed;
-    }
-
-    public void setTimeUsed(long timeUsed) {
-        this.timeUsed = timeUsed;
-    }
-
-    public double getResult() {
-        return this.result;
-    }
-
-    public void setResult(double trueResult) {
-        this.result = trueResult;
-    }
-
     public String getWinner() {
         return winner;
     }
@@ -116,7 +97,7 @@ public class GameMessage implements Serializable {
         if (username == null)
             stringForm = "Command: " + command;
         else
-            stringForm = "Command: " + command + "from Username: " + username;
+            stringForm = "Command: " + command + " from user: " + username;
         return stringForm;
     }
 }

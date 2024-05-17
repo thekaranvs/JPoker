@@ -1,24 +1,11 @@
-import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.Font;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.GridLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
-
 import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
-
-
 import java.rmi.*;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-
 
 public class GameClient {
     public ServerInterface server;
@@ -27,13 +14,11 @@ public class GameClient {
     JFrame registerFrame;
     GameClientMainWindow mainWindow;
 
-    private JPanel leaderboard;
     private JTextField usernameField;
     private JPasswordField passwordField;
     private JTextField registerUsernameField;
     private JPasswordField registerPasswordField;
     private JPasswordField registerConfirmPasswordField;
-
 
     User user;
     public JMSClient jmsclient;
@@ -79,7 +64,6 @@ public class GameClient {
             }
         });
     }
-
 
     private JPanel createLoginPanel() {
         JPanel loginPanel = new JPanel();
@@ -169,8 +153,6 @@ public class GameClient {
 
         return registerPanelParent;
     }
-
-
 
     public void generateGUI() {
         loginFrame = new JFrame("Login");
@@ -269,22 +251,6 @@ public class GameClient {
         }
     }
 
-    private class LogoutHandler implements ActionListener {
-        @Override
-        public void actionPerformed(ActionEvent ae) {
-            if (server != null) {
-                try {
-                    server.logout(user.getUsername());
-                    mainWindow.setVisible(false);
-                    registerFrame.setVisible(false);
-                    loginFrame.setVisible(true);
-                } catch (RemoteException e) {
-                    System.err.println("Failed invoking RMI: logout" + e);
-                }
-            }
-        }
-    }
-
     private class NavigationHandler implements ActionListener {
         private final String eventSource;
 
@@ -312,6 +278,4 @@ public class GameClient {
             }
         }
     }
-
-
 }

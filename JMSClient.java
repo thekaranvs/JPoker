@@ -8,6 +8,7 @@ import javax.jms.MessageProducer;
 import javax.jms.ObjectMessage;
 import javax.naming.NamingException;
 
+// Extends the JMS program to include helper functions to augment the client program
 public class JMSClient implements MessageListener {
 
     JMS jmsHelper;
@@ -21,15 +22,11 @@ public class JMSClient implements MessageListener {
     public JMSClient(GameClient client) throws NamingException, JMSException {
         this.client = client;
         jmsHelper = new JMS();
-        init();
-    }
-
-    private void init() throws JMSException {
         queueSender = jmsHelper.createQueueSender();
         topicSubscriber = jmsHelper.createTopicSubscriber();
         topicSubscriber.setMessageListener(this);
 
-        System.out.println("JMSClient: init done!");
+        System.out.println("JMSClient: initialization done!");
     }
 
     public void sendJoinMessage(String username) {
@@ -70,14 +67,12 @@ public class JMSClient implements MessageListener {
             for (User player : serverMsg.getPlayerList()) {
                 if (player.getUsername().equals(this.client.user.getUsername())) {
                     playerList = serverMsg.getPlayerList();
-                    client.mainWindow.playinggame();
-                    System.out.println("JMSClient: we have a new play board now");
+                    client.mainWindow.showGamePanel();
                 }
             }
         } else if (serverMsg.getCommand().equals("GAME_OVER")) {
-            boolean flag = false;
             gameOverMsg = serverMsg;
-            client.mainWindow.gameoverboard();
+            client.mainWindow.showGameOver();
             System.out.println("JMSClient: Game Over!");
         }
     }
