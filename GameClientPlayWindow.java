@@ -89,23 +89,23 @@ public class GameClientPlayWindow extends JPanel {
         down.add(tf1, BorderLayout.WEST);
         down.add(result, BorderLayout.CENTER);
 
+        // Detects 'Enter' key press and submits answer to server
         tf1.addActionListener(new ActionListener() {
-
             @Override
             public void actionPerformed(ActionEvent e) {
                 try {
-                    double retStr = client.server.evaluate(tf1.getText());
-                    System.out.println(retStr);
-//                    if (!retStr.equals(""))
-//                        JOptionPane.showMessageDialog(new JFrame(), retStr,
-//                                "Wrong Input", JOptionPane.ERROR_MESSAGE);
+                    String submission = tf1.getText();
+                    String result = client.server.submitAnswer(client.user, game.getPlayerList(), submission);
+
+                    System.out.println("PlayWindow: server replied with: " + result);
+                    if (!result.equals("VALID"))
+                        JOptionPane.showMessageDialog(new JFrame(), result, "Wrong Input", JOptionPane.ERROR_MESSAGE);
                 } catch (RemoteException e1) {
-                    e1.printStackTrace();
+                    JOptionPane.showMessageDialog(new JFrame(), e1.getMessage(), "Wrong Input", JOptionPane.ERROR_MESSAGE);
                 }
                 System.out.println("Message Sent:" + tf1.getText());
             }
         });
-
         this.add(up, BorderLayout.CENTER);
         this.add(right, BorderLayout.EAST);
         this.add(down, BorderLayout.SOUTH);

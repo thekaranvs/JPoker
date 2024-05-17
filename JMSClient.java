@@ -32,26 +32,27 @@ public class JMSClient implements MessageListener {
         System.out.println("JMSClient: init done!");
     }
 
-    public void sendMessage(String name) {
-        JMSMessage chatMessage = new JMSMessage(name, ""+client.user.getNumWin(), ""+client.user.getAvgTime(), ""+client.user.getTotalGames());
-        if (chatMessage != null) {
-            System.out.println("JMSClient: Trying to send message: "
-                    + chatMessage);
-            Message message = null;
+    public void sendJoinMessage(String username) {
+        GameMessage playGameMessage = new GameMessage();
+        playGameMessage.setCommand("JOIN");
+        playGameMessage.setUser(client.user);
+        playGameMessage.setUserName(username);
+
+        System.out.println("JMSClient: Sending join message: " + playGameMessage);
+        Message message = null;
+        try {
+            message = jmsHelper.createMessage(playGameMessage);
+        } catch (JMSException e) {
+            System.out.println("JMSClient: Error while creating message to send");
+        }
+        if (message != null) {
             try {
-                message = jmsHelper.createMessage(chatMessage);
+                queueSender.send(message);
             } catch (JMSException e) {
-                System.out.println("JMSClient: Error while creating message to send");
-            }
-            if (message != null) {
-                try {
-                    queueSender.send(message);
-                } catch (JMSException e) {
-                    System.err.println("JMSClient: Failed to send message");
-                }
+                System.err.println("JMSClient: Failed to send message");
             }
         }
-        System.out.println("JMSClient: Message send" + chatMessage);
+        System.out.println("JMSClient: Message sent");
     }
 
     @Override
@@ -63,6 +64,7 @@ public class JMSClient implements MessageListener {
         } catch (JMSException e) {
             e.printStackTrace();
         }
+        System.out.println("JMSClient: Received message: " + serverMsg);
         if (serverMsg.getCommand().equals("START")) {
             gameMsg = serverMsg;
             for (User player : serverMsg.getPlayerList()) {
@@ -73,19 +75,11 @@ public class JMSClient implements MessageListener {
                 }
             }
         } else if (serverMsg.getCommand().equals("GAME_OVER")) {
+            boolean flag = false;
             gameOverMsg = serverMsg;
-            if (serverMsg.getPlayerList().contains(this.client.user)) {
-                client.mainWindow.gameoverboard();
-                System.out.println("JMSClient: we finish the game");
-            }
+            client.mainWindow.gameoverboard();
+            System.out.println("JMSClient: Game Over!");
         }
-//        else if (serverMsg instanceof QuitMsg) {
-//            quitplayer = (QuitMsg) serverMsg;
-//            if (quitplayer.players.contains(this.client.name)) {
-//                client.mainwindow.pnlPlaying.updateplayer(quitplayer.players);
-//                System.out.println("JMSClient: we lost a client");
-//            }
-//        }
     }
 
 }

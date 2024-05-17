@@ -1,4 +1,5 @@
 import java.rmi.*;
+import java.util.ArrayList;
 
 public interface ServerInterface extends Remote {
 
@@ -9,5 +10,5 @@ public interface ServerInterface extends Remote {
 
     Object[][] getTopPlayers() throws RemoteException;
 
-    public double evaluate(String text) throws RemoteException;
+    public String submitAnswer(User winner, ArrayList<User> playerList, String answer) throws RemoteException;
 }

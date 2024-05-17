@@ -14,6 +14,7 @@ import javax.jms.JMSException;
 import javax.jms.Message;
 import javax.jms.ObjectMessage;
 import javax.naming.*;
+import java.util.Date;
 
 public class GameServer extends UnicastRemoteObject implements ServerInterface {
 
@@ -29,7 +30,9 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
 
     private ArrayList<User> currentPlayers;
     private String gameStatus;
+    private long gameStartTime, gameEndTime;
     private Thread gameThread;
+    private static int[] gameCardValues;
 
 
     public GameServer() throws RemoteException, SQLException, InstantiationException, IllegalAccessException, ClassNotFoundException, NamingException {
@@ -276,11 +279,20 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
             stmt.setString(1, username);
             ResultSet rs = stmt.executeQuery();
 
-            String[] details = new String[4];
             if (rs.next()) {
                 System.out.println("Retrieved data of " + username);
                 user = new User(rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getDouble(4));
             }
+
+            stmt = conn.prepareStatement("SELECT username, games_won, (SELECT COUNT(*) + 1 FROM userinfo WHERE games_won > u.games_won) FROM userinfo u WHERE username = ?");
+            stmt.setString(1, username);
+            rs = stmt.executeQuery();
+            if (rs.next()) {
+                int rank = rs.getInt(3);
+                System.out.println("Retrieved rank of " + username + ", rank: " + rank);
+                user.setRank(rank);
+            }
+
         } catch (SQLException | IllegalArgumentException e) {
             System.out.println("Error accessing record in UserInfo: " + e);
         }
@@ -307,13 +319,50 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
         return leaderboardData;
     }
 
+    private synchronized void recordWinner(User winner, long gameStart, long gameEnd) {
+        try {
+            PreparedStatement stmt = conn.prepareStatement("UPDATE UserInfo SET games_won = games_won + 1, win_time = ? WHERE username = ?");
+
+            double newAvgWinTime = ((winner.getAvgTime() * winner.getNumWin()) + ((double)(gameEnd - gameStart) / 1000)) / (winner.getNumWin() + 1);
+
+            stmt.setDouble(1, newAvgWinTime);
+            stmt.setString(2, winner.getUsername());
+            int rows = stmt.executeUpdate();
+
+            if (rows > 0) {
+                System.out.println("GameServer: Winner record updated!");
+            } else {
+                System.out.println("GameServer: Error updating winner record!");
+            }
+        } catch (SQLException | IllegalArgumentException e) {
+            System.out.println("GameServer: Error updating winner " + e);
+        }
+    }
+
+    private synchronized void updateGamePlayed(String username) {
+        try {
+            PreparedStatement stmt = conn.prepareStatement("UPDATE UserInfo SET games_played = games_played + 1 WHERE username = ?");
+
+            stmt.setString(1, username);
+            int rows = stmt.executeUpdate();
+
+            if (rows > 0) {
+                System.out.println("GameServer: Game played record updated for " + username + "!");
+            } else {
+                System.out.println("GameServer: Error updating games played!");
+            }
+        } catch (SQLException | IllegalArgumentException e) {
+            System.out.println("GameServer: Error updating games played " + e);
+        }
+    }
+
     private GameMessage createNewGameMessage(ArrayList<User> playerList) {
         GameMessage msg = new GameMessage();
 
         msg.setCommand("START");
         msg.setPlayerList(playerList);
 
-        int [] num = new int[4];
+        int[] num = new int[4];
         ArrayList<String> cards = new ArrayList<String>(4);
 
         char[] suit = {'a','b','c','d'}; // the 4 suits prefix (cards stored as a4.png for e.g.)
@@ -333,9 +382,10 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
             }
 
             num[i] = n;
+            gameCardValues = Arrays.copyOf(num, 4);
             cards.add(i,suit[m]+Integer.toString(n)+".png");
         }
-        msg.setGameCards(cards); // Test if solvable?
+        msg.setGameCards(cards);
 
         return msg;
     }
@@ -344,6 +394,11 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
         GameMessage newGameMsg = createNewGameMessage(playerList);
         broadcastMessage(convertToMessage(newGameMsg));
         System.out.println("New game message broadcasted!");
+        gameStartTime = new Date().getTime();
+
+        for (User player : playerList) {
+            updateGamePlayed(player.getUsername());
+        }
     }
 
     class HandleClientMsg implements Runnable {
@@ -354,6 +409,15 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
         }
         public void run() {
             try {
+                if (gameStatus.equals("ONGOING")) {
+                    System.out.println("GameServer: Ongoing game detected. Asking client to wait...");
+                    return;
+                }
+
+                for (User player : currentPlayers) {
+                    if (player.getUsername().equals(playerInfo.getUsername())) return;
+                }
+
                 currentPlayers.add(playerInfo);
 
                 if (gameStatus.equals("WAIT")) {
@@ -365,7 +429,7 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
 
                     if (currentPlayers.size() >= 2){
                         System.out.println("10 seconds passed since player 1 joined. Starting game as >1 player joined");
-                        gameStatus = "WAIT";
+                        gameStatus = "ONGOING";
                         startGame(currentPlayers);
                         currentPlayers.clear();
                     } else {
@@ -385,14 +449,14 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
                 else if (gameStatus.equals("THREE_WAITING")) {
                     System.out.println("Fourth player has joined game: " + playerInfo.getUsername());
                     System.out.println("Starting game...");
-                    gameStatus = "WAIT";
+                    gameStatus = "ONGOING";
                     gameThread.interrupt();
                     startGame(currentPlayers);
                     currentPlayers.clear();
                 }
                 else if (gameStatus.equals("NOT_ENOUGH")) {
                     System.out.println("Second player has joined game: " + playerInfo.getUsername());
-                    gameStatus = "WAIT";
+                    gameStatus = "ONGOING";
                     startGame(currentPlayers);
                     currentPlayers.clear();
                 }
@@ -404,132 +468,158 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
     }
 
 
-    // return true if op1 has higher or the same priority than op2
-    public static boolean isPrior(String op1, String op2) {
-        if (op1.charAt(0) == '*' || op1.charAt(0) == '/') {
-            return true;
-        } else if (op1.charAt(0) == '+' || op1.charAt(0) == '-') {
-            if (op2.equals("*"))
-                return false;
-            else
-                return true;
-        } else if (op1.charAt(0) == '(')
-            return false;
-        else
-            return false;
+    public synchronized String submitAnswer(User winner, ArrayList<User> playerList, String answer) throws RemoteException {
+        String result = "VALID";
+
+        try {
+            double val = evaluateExpression(answer);
+            // ensure that answer is 24 (due to floating point arithmetic, ans can be diff)
+            if (Math.abs(val - 24) < 0.01) {
+                System.out.println("GameServer: Correct answer submitted - Game over! Clearing player list");
+                gameEndTime = new Date().getTime();
+
+                GameMessage gameOverMsg = new GameMessage();
+                gameOverMsg.setCommand("GAME_OVER");
+                gameOverMsg.setPlayerList(playerList);
+                gameOverMsg.setWinner(winner.getUsername());
+                gameOverMsg.setAnswer(answer);
+                gameOverMsg.setEndTime(gameEndTime);
+
+                gameStatus = "WAIT";
+                currentPlayers.clear();
+
+                broadcastMessage(convertToMessage(gameOverMsg));
+                recordWinner(winner, gameStartTime, gameEndTime);
+            } else {
+                result = "It does not evaluate to 24!";
+            }
+        } catch (Exception e) {
+            System.out.println("GameServer: Error evaluating submitted answer! Msg: " + e);
+            result = e.getMessage();
+            if (result == null) result = "INVALID INPUT!";
+        }
+        return result;
     }
 
-    public double evaluate(String answer) {
-        // parse the expression
-        ArrayList<String> validSigns = new ArrayList<String>(Arrays.asList("+","-","*","/"));
-        ArrayList<String> validValues = new ArrayList<String>(Arrays.asList("A","2","3","4","5","6","7","8","9","10","J","Q","K"));
-        ArrayList<String> validNumbers = new ArrayList<String>(Arrays.asList("1","2","3","4","5","6","7","8","9","10","11","12","13"));
+    // Modified function to evaluate expression (evaluation process taken from GFG)
+    public static double evaluateExpression(String expression) throws Exception
+    {
+        char[] tokens = expression.toCharArray();
 
-        // convert from infix to postfix
-        String[] tokens = new String[answer.length()];  // infix
-        int index = 0;
-        int length = 0;
-        for (int i = 0; i < answer.length(); i++) {
-            if (answer.charAt(i) == '1') {         // Check whether it is "10"
-                if (i == answer.length()-1)
-                    return -1;
-                else if (answer.charAt(i+1) == '0') {
-                    tokens[index] = "" + answer.charAt(i) + answer.charAt(i+1);
-                    index++;
-                    length++;
+        // Storing the card values in expression to cross check with cards shown to user
+        int[] cardValues = new int[4];
+        int cardIndex = 0;
+
+        // Stacks to store operands and operators
+        Stack<Double> values = new Stack<>();
+        Stack<Character> operators = new Stack<>();
+
+        for (int i = 0; i < tokens.length; i++) {
+            if (tokens[i] == ' ')
+                continue;
+
+            if ((tokens[i] >= '0' && tokens[i] <= '9') || tokens[i] == '.') {
+                StringBuilder sb = new StringBuilder();
+                // Continue collecting digits and the decimal point to form a number
+                while (i < tokens.length && (Character.isDigit(tokens[i]) || tokens[i] == '.')) {
+                    sb.append(tokens[i]);
                     i++;
-                } else
-                    return -1;
-            }
-            if (validSigns.contains(answer.charAt(i)+"") || validValues.contains(answer.charAt(i)+"")) {
-                tokens[index] = "" + answer.charAt(i);
-                index++;
-                length++;
-            } else if (answer.charAt(i) == '(' || answer.charAt(i) == ')') {
-                tokens[index] = "" + answer.charAt(i);
-                index++;
-            }
-        }
-
-        String[] outputs = new String[length]; // post-fix
-        Stack<String> opstack = new Stack<String>();
-        length = index;
-        index = 0;
-        for (int i = 0; i< length; i++) {
-            if (validValues.contains(tokens[i])) {
-                if (answer.charAt(i) == 'A')
-                    outputs[index] = "1";
-                else if (answer.charAt(i) == 'J')
-                    outputs[index] = "11";
-                else if (answer.charAt(i) == 'Q')
-                    outputs[index] = "12";
-                else if (answer.charAt(i) == 'K')
-                    outputs[index] = "13";
-                else
-                    outputs[index] = tokens[i];
-                index++;
-            } else if (tokens[i].charAt(0) == '(') {
-                opstack.push(tokens[i]);
-            } else if (tokens[i].charAt(0) == ')') {
-                String top = opstack.pop();
-                while (top.charAt(0) != '(') {
-                    outputs[index] = top;
-                    index++;
-                    top = opstack.pop();
                 }
-            } else if (validSigns.contains(tokens[i])) {
-                Stack<String> tmp = new Stack<String>();
-                while (!opstack.isEmpty()) {
-                    if (opstack.peek().equals("(")) {
-                        tmp.push(opstack.pop());
-                        System.out.println(tmp.peek() + " is popped from the op_stack and pushed to the tmp_stack!");
+
+                values.push(Double.parseDouble(sb.toString()));
+                if (cardIndex >= 4) {
+                    throw new Exception("More than 4 card values detected!");
+                }
+                cardValues[cardIndex++] = Integer.parseInt(sb.toString());
+                i--;
+            }
+            else if (tokens[i] == 'A' || tokens[i] == 'J' || tokens[i] == 'Q' || tokens[i] == 'K') {
+                double cardVal = -1.0;
+                switch (tokens[i]) {
+                    case 'A':
+                        cardVal = 1.0;
                         break;
-                    }
-                    if (isPrior(opstack.peek(), tokens[i])) {
-                        outputs[index] = opstack.pop();
-                        index++;
-                    } else {
-                        tmp.push(opstack.pop());
-                    }
+                    case 'J':
+                        cardVal = 11.0;
+                        break;
+                    case 'Q':
+                        cardVal = 12.0;
+                        break;
+                    case 'K':
+                        cardVal = 13.0;
+                        break;
                 }
-                while (!tmp.isEmpty()) {
-                    opstack.push(tmp.pop());
+                if (cardVal != -1.0) {
+                    values.push(cardVal);
+                    if (cardIndex >= 4) {
+                        throw new Exception("More than 4 card values detected!");
+                    }
+                    cardValues[cardIndex++] = (int)cardVal;
                 }
-                opstack.push(tokens[i]);
-            } else {
-                return -1; // invalid sign used
+            }
+            else if (tokens[i] == '(') {
+                // If the character is '(', push it to the operator stack
+                operators.push(tokens[i]);
+            }
+            else if (tokens[i] == ')') {
+                // If the character is ')', pop and apply ops until we encounter opening bracket
+                while (operators.peek() != '(') {
+                    values.push(applyOperator(operators.pop(), values.pop(), values.pop()));
+                }
+                operators.pop(); // Pop the '('
+            }
+            else if (tokens[i] == '+' || tokens[i] == '-'  || tokens[i] == '*' || tokens[i] == '/') {
+                // If the character is an operator, pop and apply operators with higher precedence
+                while (!operators.isEmpty() && hasPrecedence(tokens[i], operators.peek())) {
+                    values.push(applyOperator(operators.pop(), values.pop(),values.pop()));
+                }
+                // Push the current operator to the operators stack
+                operators.push(tokens[i]);
             }
         }
-        while(!opstack.isEmpty()) {
-            outputs[index] = opstack.pop();
-            index++;
-        }
 
-        // check the validity of numbers
-//        for (String token: outputs) {
-//            if (validNumbers.contains(token) && !gameNumbers.contains(token))
-//                return -1; // invalid number used
-//        }
-
-        // evaluation using post-fix order
-        Stack<Double> stack = new Stack<Double>();
-        for(String token: outputs) {
-            if(token.equals("+")) {
-                stack.push(stack.pop()+stack.pop());
-            } else if(token.equals("-")) {
-                Double p1 = stack.pop();
-                Double p2 = stack.pop();
-                stack.push(p2-p1);
-            } else if(token.equals("*")) {
-                stack.push(stack.pop()*stack.pop());
-            } else if(token.equals("/")) {
-                Double p1 = stack.pop();
-                Double p2 = stack.pop();
-                stack.push(p2/p1);
-            } else {
-                stack.push((double) Integer.parseInt(token));
+        // Ensure only values in deck displayed are used
+        for (int i = 0; i < cardIndex; i++) {
+            int cardVal = cardValues[i];
+            boolean isPresent = false;
+            for (int j = 0; j < 4; j++) {
+                if (cardVal == gameCardValues[j]) isPresent = true;
             }
+            if (!isPresent) throw new Exception("One of the numbers/cards used not among cards displayed!");
         }
-        return stack.pop();
+
+        // Process any remaining operators in the stack
+        while (!operators.isEmpty()) {
+            values.push(applyOperator(operators.pop(),  values.pop(), values.pop()));
+        }
+
+        // The result is the only remaining element in the values stack
+        return values.pop();
+    }
+
+    // Function to check if operator1 has higher precedence than operator2
+    private static boolean hasPrecedence(char operator1, char operator2)
+    {
+        if (operator2 == '(' || operator2 == ')')
+            return false;
+        return (operator1 != '*' && operator1 != '/') || (operator2 != '+' && operator2 != '-');
+    }
+
+    // Function to apply the operator to two operands
+    private static double applyOperator(char operator, double b, double a)
+    {
+        switch (operator) {
+            case '+':
+                return a + b;
+            case '-':
+                return a - b;
+            case '*':
+                return a * b;
+            case '/':
+                if (b == 0)
+                    throw new ArithmeticException("Cannot divide by zero");
+                return a / b;
+        }
+        return 0;
     }
 }

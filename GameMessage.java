@@ -18,20 +18,10 @@ public class GameMessage implements Serializable {
     private String winner;          // the winner's user_name if it is the case
     private long endTime;           // the end time for the winner
 
-    private boolean inGame, isWaiting;
 
     public GameMessage() {
         command = null;
     }
-
-    public GameMessage(String id, String to, String username, String password) {
-        this.command = id;
-        this.to = to;
-        this.username = username;
-        this.password = password;
-    }
-
-
 
     public String getCommand() {
         return command;
@@ -39,14 +29,6 @@ public class GameMessage implements Serializable {
 
     public void setCommand(String id) {
         command = id;
-    }
-
-    public String getTo() {
-        return to;
-    }
-
-    public void setTo(String to) {
-        this.to = to;
     }
 
     public String getUserName() {
@@ -132,28 +114,9 @@ public class GameMessage implements Serializable {
     public String toString() {
         String stringForm;
         if (username == null)
-            stringForm = "Message ID: " + command;
+            stringForm = "Command: " + command;
         else
-            stringForm = "Message ID: " + command + "; Username: " + username;
-        if (to != null)
-            stringForm = stringForm + "; To: " + to;
+            stringForm = "Command: " + command + "from Username: " + username;
         return stringForm;
     }
-
-    public boolean isInGame() {
-        return inGame;
-    }
-
-    public void setInGame(boolean inGame) {
-        this.inGame = inGame;
-    }
-
-    public boolean isWaiting() {
-        return isWaiting;
-    }
-
-    public void setWaiting(boolean isWaiting) {
-        this.isWaiting = isWaiting;
-    }
-
 }

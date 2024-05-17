@@ -97,12 +97,12 @@ public class GameClientMainWindow extends JFrame implements ActionListener {
             pnlWaiting = new JPanel();
             remove(mainPanel);
             repaint();
-            pnlWaiting.add(new JLabel("Waiting for players......"));
+            pnlWaiting.add(new JLabel("Waiting for players..."));
             mainPanel = pnlWaiting;
             add(mainPanel, BorderLayout.CENTER);
             invalidate();
             validate();
-            new waiting().execute();
+            new waitForJoin().execute();
         } else if (arg0.getSource() == logout) {
             if (client.server != null) {
                 try {
@@ -117,12 +117,11 @@ public class GameClientMainWindow extends JFrame implements ActionListener {
         }
     }
 
-    private class waiting extends SwingWorker<Void, Void> {
-
+    private class waitForJoin extends SwingWorker<Void, Void> {
         @Override
         protected Void doInBackground() throws Exception {
-            client.jmsclient.sendMessage(client.user.getUsername());
-            System.out.println("Message Sent:" + client.user.getUsername());
+            client.jmsclient.sendJoinMessage(client.user.getUsername());
+            System.out.println("Message Sent to join game: " + client.user.getUsername());
             return null;
         }
 
@@ -130,7 +129,6 @@ public class GameClientMainWindow extends JFrame implements ActionListener {
         protected void done() {
             super.done();
         }
-
     }
 
     /**
