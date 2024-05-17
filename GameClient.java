@@ -36,6 +36,7 @@ public class GameClient {
     private JPasswordField registerConfirmPasswordField;
 
     private User user;
+    private JMSClient jmsclient;
 
     private int currentPanel = -1;
 
@@ -47,6 +48,7 @@ public class GameClient {
         try {
             Registry registry = LocateRegistry.getRegistry(host);
             server = (ServerInterface)registry.lookup("Server");
+            jmsclient =  new JMSClient(this);
         } catch(Exception e) {
             System.err.println("Failed accessing RMI: "+e);
             System.exit(1);
@@ -59,8 +61,9 @@ public class GameClient {
     public GameClient() {
         try {
             server = (ServerInterface)Naming.lookup("Server");
+            jmsclient =  new JMSClient(this);
         } catch(Exception e) {
-            System.err.println("Failed accessing RMI: "+e);
+            System.err.println("Failed accessing RMI or JMS client: "+e);
             System.exit(1);
         }
     }
