@@ -5,7 +5,15 @@ import java.rmi.server.*;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.sql.*;
+import java.util.Arrays;
 import java.util.Random;
+import java.util.Stack;
+import javax.jms.MessageProducer;
+import javax.jms.MessageConsumer;
+import javax.jms.JMSException;
+import javax.jms.Message;
+import javax.jms.ObjectMessage;
+import javax.naming.*;
 
 public class GameServer extends UnicastRemoteObject implements ServerInterface {
 
@@ -25,8 +33,11 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
 
 
     public GameServer() throws RemoteException, SQLException, InstantiationException, IllegalAccessException, ClassNotFoundException, NamingException {
-
-        jms = new JMS();
+        try {
+            jms = new JMS();
+        } catch (Exception e) {
+            System.out.println("GameServer: error while creating jms obj: " + e);
+        }
 
         // Set up JDBC connection and initialise tables
         conn = DriverManager.getConnection("jdbc:mysql://" + DB_HOST + "/" + DB_NAME + "?user=" + DB_USER + "&password=" + DB_PASS);
@@ -112,7 +123,7 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
     private void broadcastMessage(Message jmsMessage) throws JMSException {
         try {
             if (topicPublisher == null) topicPublisher = jms.createTopicPublisher();
-            return topicPublisher.send(jmsMessage);
+            topicPublisher.send(jmsMessage);
         } catch (JMSException e) {
             System.out.println("Failed to send message to topic: " + e);
             throw e;
@@ -329,7 +340,7 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
         return msg;
     }
 
-    private void startGame(ArrayList<User> playerList) {
+    private void startGame(ArrayList<User> playerList) throws JMSException {
         GameMessage newGameMsg = createNewGameMessage(playerList);
         broadcastMessage(convertToMessage(newGameMsg));
         System.out.println("New game message broadcasted!");
@@ -385,10 +396,140 @@ public class GameServer extends UnicastRemoteObject implements ServerInterface {
                     startGame(currentPlayers);
                     currentPlayers.clear();
                 }
-            } catch (JMSException e){
+            } catch (Exception e){
                 System.out.println("HandleClientMsg error: "+e);
                 e.printStackTrace();
             }
         }
+    }
+
+
+    // return true if op1 has higher or the same priority than op2
+    public static boolean isPrior(String op1, String op2) {
+        if (op1.charAt(0) == '*' || op1.charAt(0) == '/') {
+            return true;
+        } else if (op1.charAt(0) == '+' || op1.charAt(0) == '-') {
+            if (op2.equals("*"))
+                return false;
+            else
+                return true;
+        } else if (op1.charAt(0) == '(')
+            return false;
+        else
+            return false;
+    }
+
+    public double evaluate(String answer) {
+        // parse the expression
+        ArrayList<String> validSigns = new ArrayList<String>(Arrays.asList("+","-","*","/"));
+        ArrayList<String> validValues = new ArrayList<String>(Arrays.asList("A","2","3","4","5","6","7","8","9","10","J","Q","K"));
+        ArrayList<String> validNumbers = new ArrayList<String>(Arrays.asList("1","2","3","4","5","6","7","8","9","10","11","12","13"));
+
+        // convert from infix to postfix
+        String[] tokens = new String[answer.length()];  // infix
+        int index = 0;
+        int length = 0;
+        for (int i = 0; i < answer.length(); i++) {
+            if (answer.charAt(i) == '1') {         // Check whether it is "10"
+                if (i == answer.length()-1)
+                    return -1;
+                else if (answer.charAt(i+1) == '0') {
+                    tokens[index] = "" + answer.charAt(i) + answer.charAt(i+1);
+                    index++;
+                    length++;
+                    i++;
+                } else
+                    return -1;
+            }
+            if (validSigns.contains(answer.charAt(i)+"") || validValues.contains(answer.charAt(i)+"")) {
+                tokens[index] = "" + answer.charAt(i);
+                index++;
+                length++;
+            } else if (answer.charAt(i) == '(' || answer.charAt(i) == ')') {
+                tokens[index] = "" + answer.charAt(i);
+                index++;
+            }
+        }
+
+        String[] outputs = new String[length]; // post-fix
+        Stack<String> opstack = new Stack<String>();
+        length = index;
+        index = 0;
+        for (int i = 0; i< length; i++) {
+            if (validValues.contains(tokens[i])) {
+                if (answer.charAt(i) == 'A')
+                    outputs[index] = "1";
+                else if (answer.charAt(i) == 'J')
+                    outputs[index] = "11";
+                else if (answer.charAt(i) == 'Q')
+                    outputs[index] = "12";
+                else if (answer.charAt(i) == 'K')
+                    outputs[index] = "13";
+                else
+                    outputs[index] = tokens[i];
+                index++;
+            } else if (tokens[i].charAt(0) == '(') {
+                opstack.push(tokens[i]);
+            } else if (tokens[i].charAt(0) == ')') {
+                String top = opstack.pop();
+                while (top.charAt(0) != '(') {
+                    outputs[index] = top;
+                    index++;
+                    top = opstack.pop();
+                }
+            } else if (validSigns.contains(tokens[i])) {
+                Stack<String> tmp = new Stack<String>();
+                while (!opstack.isEmpty()) {
+                    if (opstack.peek().equals("(")) {
+                        tmp.push(opstack.pop());
+                        System.out.println(tmp.peek() + " is popped from the op_stack and pushed to the tmp_stack!");
+                        break;
+                    }
+                    if (isPrior(opstack.peek(), tokens[i])) {
+                        outputs[index] = opstack.pop();
+                        index++;
+                    } else {
+                        tmp.push(opstack.pop());
+                    }
+                }
+                while (!tmp.isEmpty()) {
+                    opstack.push(tmp.pop());
+                }
+                opstack.push(tokens[i]);
+            } else {
+                return -1; // invalid sign used
+            }
+        }
+        while(!opstack.isEmpty()) {
+            outputs[index] = opstack.pop();
+            index++;
+        }
+
+        // check the validity of numbers
+//        for (String token: outputs) {
+//            if (validNumbers.contains(token) && !gameNumbers.contains(token))
+//                return -1; // invalid number used
+//        }
+
+        // evaluation using post-fix order
+        Stack<Double> stack = new Stack<Double>();
+        for(String token: outputs) {
+            if(token.equals("+")) {
+                stack.push(stack.pop()+stack.pop());
+            } else if(token.equals("-")) {
+                Double p1 = stack.pop();
+                Double p2 = stack.pop();
+                stack.push(p2-p1);
+            } else if(token.equals("*")) {
+                stack.push(stack.pop()*stack.pop());
+            } else if(token.equals("/")) {
+                Double p1 = stack.pop();
+                Double p2 = stack.pop();
+                stack.push(p2/p1);
+            } else {
+                stack.push((double) Integer.parseInt(token));
+            }
+        }
+        return stack.pop();
     }
 }

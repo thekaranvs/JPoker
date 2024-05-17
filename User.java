@@ -42,4 +42,5 @@ public class User implements Serializable {
     public void setAvgTime(double avgTime) {
         this.avgTime = avgTime;
     }
+    public int getRank() { return 0; }
 }

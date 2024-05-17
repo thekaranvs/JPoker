@@ -21,12 +21,11 @@ import java.rmi.registry.Registry;
 
 
 public class GameClient {
-    private ServerInterface server;
+    public ServerInterface server;
 
-    private JFrame loginFrame;
-    private JFrame registerFrame;
-    private JFrame mainFrame;
-    private MainPanel viewPanel;
+    JFrame loginFrame;
+    JFrame registerFrame;
+    GameClientMainWindow mainWindow;
 
     private JPanel leaderboard;
     private JTextField usernameField;
@@ -35,10 +34,9 @@ public class GameClient {
     private JPasswordField registerPasswordField;
     private JPasswordField registerConfirmPasswordField;
 
-    private User user;
-    private JMSClient jmsclient;
 
-    private int currentPanel = -1;
+    User user;
+    public JMSClient jmsclient;
 
     /**
      * Parameterized constructor to connect with RMI service on another machine
@@ -172,76 +170,7 @@ public class GameClient {
         return registerPanelParent;
     }
 
-    private JPanel createMainMenu() {
-        JPanel menu = new JPanel(new FlowLayout());
 
-        JButton profile = new JButton("User Profile");
-        profile.setPreferredSize(new Dimension(160, 30));
-        profile.addActionListener(new NavigationHandler("userProfile"));
-        menu.add(profile);
-
-        JButton game = new JButton("Play Game");
-        game.setPreferredSize(new Dimension(160, 30));
-        game.addActionListener(new NavigationHandler("game"));
-        menu.add(game);
-
-        JButton board = new JButton("Leaderboard");
-        board.setPreferredSize(new Dimension(160, 30));
-        board.addActionListener(new NavigationHandler("leaderboard"));
-        menu.add(board);
-
-        JButton logout = new JButton("Logout");
-        logout.setPreferredSize(new Dimension(160, 30));
-        logout.addActionListener(new LogoutHandler());
-        menu.add(logout);
-
-        return menu;
-    }
-
-    private JPanel createLeaderboard() {
-        JPanel leaderboardPanel = new JPanel();
-        leaderboardPanel.setLayout(new GridLayout(1, 0));
-
-        String[] columnNames = {"Rank", "Player", "Games Won", "Games Played", "Average Time"};
-        Object[][] data = {
-                {1,     "PlayerZero",   18, 25, "16.9s"},
-                {2,     "Player 4",     15, 17, "12.5s"},
-                {3,     "DudeMan",      13, 22, "12.5s"},
-                {4,     "JackSparrow",  12, 19, "12.5s"},
-                {5,     "OriginalBoi",  10, 25, "12.5s"},
-                {6,     "JackOff",       8, 15, "12.5s"},
-                {7,     "Johnson",       6, 9, "12.5s"},
-                {8,     "Black",         4, 10, "12.5s"},
-                {9,     "White",         3, 9, "12.5s"},
-                {10,    "Beeswax",       0, 1, "12.5s"}
-        };
-
-        try {
-            data = server.getTopPlayers();
-        } catch (RemoteException e) {
-            System.out.println("Error invoking RMI: getTopPlayers() " + e);
-        }
-
-        // Define new table model to make cells non-editable
-        DefaultTableModel tableModel = new DefaultTableModel(data, columnNames) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-
-        JTable leaderboardTable = new JTable(data, columnNames);
-        leaderboardTable.setModel(tableModel);
-        leaderboardTable.setPreferredScrollableViewportSize(new Dimension(150, 300));
-        leaderboardTable.setFillsViewportHeight(true);
-        leaderboardTable.setRowHeight(30);
-        leaderboardPanel.add(leaderboardTable);
-
-        JScrollPane scrollPane = new JScrollPane(leaderboardTable);
-        leaderboardPanel.add(scrollPane);
-
-        return leaderboardPanel;
-    }
 
     public void generateGUI() {
         loginFrame = new JFrame("Login");
@@ -252,39 +181,11 @@ public class GameClient {
         registerFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         registerFrame.setPreferredSize(new Dimension(500, 400));
 
-        mainFrame = new JFrame("JPoker 24-Game");
-        mainFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        mainFrame.setPreferredSize(new Dimension(800, 400));
-        mainFrame.setResizable(true);
-
-        viewPanel = new MainPanel();
-
-        mainFrame.addWindowListener(new WindowAdapter() {
-            public void windowClosing(WindowEvent e) {
-                super.windowClosing(e);
-                if (server != null) {
-                    try {
-                        System.out.println("Main frame closed - logging out...");
-                        server.logout(user.getUsername());
-                        mainFrame.setVisible(false);
-                        registerFrame.setVisible(false);
-                        loginFrame.setVisible(true);
-                    } catch (RemoteException err) {
-                        System.err.println("Failed invoking RMI: " + e);
-                    }
-                }
-            }
-        });
-
         loginFrame.add(createLoginPanel(), BorderLayout.CENTER);
         loginFrame.pack();
 
         registerFrame.add(createRegisterPanel(), BorderLayout.CENTER);
         registerFrame.pack();
-
-        mainFrame.add(createMainMenu(), BorderLayout.NORTH);
-        mainFrame.add(viewPanel, BorderLayout.CENTER);
-        mainFrame.pack();
 
         loginFrame.setVisible(true);
     }
@@ -312,25 +213,24 @@ public class GameClient {
                         else if (status == 3)
                             JOptionPane.showMessageDialog(null, "User already logged in", "Error", JOptionPane.ERROR_MESSAGE);
                         else if (status == 4) {
-                            currentPanel = 0;
                             user = server.getUserDetails(username);
-                            viewPanel = new MainPanel();
-                            viewPanel.repaint();
-                            if (leaderboard != null) {
-                                mainFrame.remove(leaderboard);
-                                mainFrame.add(viewPanel);
-                            }
-                            mainFrame.pack();
-                            mainFrame.repaint();
+                            mainWindow = new GameClientMainWindow(GameClient.this, user);
                             loginFrame.setVisible(false);
                             registerFrame.setVisible(false);
-                            mainFrame.setVisible(true);
                         }
                     } catch (RemoteException e) {
                         System.err.println("Failed invoking RMI: " + e);
                     }
                 }
             }
+        }
+    }
+
+    public void retrieveLatestUserInfo() {
+        try {
+            user = server.getUserDetails(user.getUsername());
+        } catch (Exception e) {
+            System.out.println("Error while retrieving latest user details: " + e);
         }
     }
 
@@ -356,23 +256,9 @@ public class GameClient {
                         int status = server.register(username, password);
                         if (status == 4) {
                             user = server.getUserDetails(username);
-                            if (currentPanel == -1) {
-                                currentPanel = 0;
-                                viewPanel = new MainPanel();
-
-                            } else {
-                                currentPanel = 0;
-                                if (leaderboard != null) {
-                                    mainFrame.remove(leaderboard);
-                                }
-                            }
-                            mainFrame.add(viewPanel);
-                            mainFrame.pack();
-                            viewPanel.repaint();
-                            mainFrame.repaint();
+                            mainWindow = new GameClientMainWindow(GameClient.this, user);
                             loginFrame.setVisible(false);
                             registerFrame.setVisible(false);
-                            mainFrame.setVisible(true);
                         } else if (status == 1)
                             JOptionPane.showMessageDialog(null, "Username taken, please choose another", "Error", JOptionPane.ERROR_MESSAGE);
                     } catch (RemoteException e) {
@@ -389,7 +275,7 @@ public class GameClient {
             if (server != null) {
                 try {
                     server.logout(user.getUsername());
-                    mainFrame.setVisible(false);
+                    mainWindow.setVisible(false);
                     registerFrame.setVisible(false);
                     loginFrame.setVisible(true);
                 } catch (RemoteException e) {
@@ -412,48 +298,12 @@ public class GameClient {
             switch (eventSource) {
                 case "registerNav": {
                     loginFrame.setVisible(false);
-                    mainFrame.setVisible(false);
                     registerFrame.setVisible(true);
                     break;
                 }
                 case "cancel": {
                     registerFrame.setVisible(false);
-                    mainFrame.setVisible(false);
                     loginFrame.setVisible(true);
-                    break;
-                }
-                case "userProfile": {
-                    currentPanel = 0;
-                    if (leaderboard != null) {
-                        mainFrame.remove(leaderboard);
-                        mainFrame.add(viewPanel);
-                    }
-                    viewPanel.repaint();
-                    mainFrame.pack();
-                    mainFrame.repaint();
-                    mainFrame.setVisible(true);
-                    break;
-                }
-                case "game": {
-                    currentPanel = 1;
-                    if (leaderboard != null) {
-                        mainFrame.remove(leaderboard);
-                        mainFrame.add(viewPanel);
-                    }
-                    viewPanel.repaint();
-                    mainFrame.pack();
-                    mainFrame.repaint();
-                    mainFrame.setVisible(true);
-                    break;
-                }
-                case "leaderboard": {
-                    currentPanel = 2;
-                    leaderboard = createLeaderboard();
-                    mainFrame.remove(viewPanel);
-                    mainFrame.add(leaderboard);
-                    mainFrame.pack();
-                    mainFrame.repaint();
-                    mainFrame.setVisible(true);
                     break;
                 }
                 default: {
@@ -464,36 +314,4 @@ public class GameClient {
     }
 
 
-    private class MainPanel extends JPanel {
-        // 0: User Profile, 1: Play Game, 2: Leaderboard (subject to change)
-        public MainPanel() {
-        }
-        public void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D)g;
-
-            if (currentPanel == 0) {
-                Font f = new Font("Calibri", Font.BOLD, 30);
-
-                g2.setFont(f);
-                g2.setStroke(new BasicStroke(2));
-                g2.drawString(user.getUsername(), 30, 50);
-
-                f = new Font("Calibri", Font.PLAIN, 20);
-                g2.setFont(f);
-                g2.drawString("Number of wins: " + user.getNumWin(), 30, 90);
-                g2.drawString("Number of games: " + user.getTotalGames(), 30, 120);
-                g2.drawString("Average time to win: " + user.getAvgTime() + " s", 30, 150);
-
-                f = new Font("Arial", Font.BOLD, 25);
-                g2.setFont(f);
-                g2.drawString("Rank: #" + "TBD", 30, 190);
-            } else if (currentPanel == 1) {
-                Font f = new Font("Calibri", Font.BOLD, 30);
-                g2.setFont(f);
-                g2.drawString("Game Screen", 120, 150);
-            } // currentPanel == 2 (Leaderboard) handled by separate class for now
-            mainFrame.pack();
-            mainFrame.setVisible(true);
-        }
-    }
 }

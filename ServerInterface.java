@@ -8,4 +8,6 @@ public interface ServerInterface extends Remote {
     User getUserDetails(String username) throws RemoteException;
 
     Object[][] getTopPlayers() throws RemoteException;
+
+    public double evaluate(String text) throws RemoteException;
 }

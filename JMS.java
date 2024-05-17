@@ -37,14 +37,15 @@ public class JMS {
     public JMS(String host, int port) throws NamingException, JMSException {
         // Access JNDI
         createJNDIContext(host, port);
-
+        System.out.println("JMS: Created JNDI context - looking up conn factory and q and topic");
         // Lookup JMS resources (using variables defined above)
         lookupConnectionFactory();
         lookupQueue();
         lookupTopic();
-
+        System.out.println("JMS: Looked up queue and topic - creating connection");
         // Create connection->session->sender
         createConnection();
+        System.out.println("JMS: Connection created");
     }
 
     public Session getSession() throws JMSException {

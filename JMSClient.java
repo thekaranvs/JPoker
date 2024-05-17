@@ -13,11 +13,13 @@ public class JMSClient implements MessageListener {
     JMS jmsHelper;
     private MessageProducer queueSender;
     private MessageConsumer topicSubscriber;
-    private GameClient user;
+    private GameClient client;
     public ArrayList<User> playerList = new ArrayList<User>();
+    public GameMessage gameMsg;
+    public GameMessage gameOverMsg;
 
-    public JMSClient(GameClient user) throws NamingException, JMSException {
-        this.user = user;
+    public JMSClient(GameClient client) throws NamingException, JMSException {
+        this.client = client;
         jmsHelper = new JMS();
         init();
     }
@@ -31,7 +33,7 @@ public class JMSClient implements MessageListener {
     }
 
     public void sendMessage(String name) {
-        JMSMessage chatMessage = new JMSMessage(name, user.win, user.avgwin,user.gameplayed);
+        JMSMessage chatMessage = new JMSMessage(name, ""+client.user.getNumWin(), ""+client.user.getAvgTime(), ""+client.user.getTotalGames());
         if (chatMessage != null) {
             System.out.println("JMSClient: Trying to send message: "
                     + chatMessage);
@@ -62,24 +64,26 @@ public class JMSClient implements MessageListener {
             e.printStackTrace();
         }
         if (serverMsg.getCommand().equals("START")) {
+            gameMsg = serverMsg;
             for (User player : serverMsg.getPlayerList()) {
-                if (player.getUsername().equals(this.user.name)) {
+                if (player.getUsername().equals(this.client.user.getUsername())) {
                     playerList = serverMsg.getPlayerList();
-                    user.mainwindow.playinggame();
+                    client.mainWindow.playinggame();
                     System.out.println("JMSClient: we have a new play board now");
                 }
             }
         } else if (serverMsg.getCommand().equals("GAME_OVER")) {
-            if (serverMsg.getPlayerList().contains(this.user.name)) {
-                user.mainwindow.gameoverboard();
+            gameOverMsg = serverMsg;
+            if (serverMsg.getPlayerList().contains(this.client.user)) {
+                client.mainWindow.gameoverboard();
                 System.out.println("JMSClient: we finish the game");
             }
         }
 //        else if (serverMsg instanceof QuitMsg) {
 //            quitplayer = (QuitMsg) serverMsg;
-//            if (quitplayer.players.contains(this.user.name)) {
-//                user.mainwindow.pnlPlaying.updateplayer(quitplayer.players);
-//                System.out.println("JMSClient: we lost a user");
+//            if (quitplayer.players.contains(this.client.name)) {
+//                client.mainwindow.pnlPlaying.updateplayer(quitplayer.players);
+//                System.out.println("JMSClient: we lost a client");
 //            }
 //        }
     }
